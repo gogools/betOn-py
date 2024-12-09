@@ -1,0 +1,220 @@
+import re
+
+# beautiful soup
+from bs4 import BeautifulSoup  # pip install lxml in order to use the lxml parser
+# fuzzywuzzy
+from fuzzywuzzy import fuzz  # needs pip install python-Levenshtein
+from selenium.webdriver.common.by import By
+
+from util import click_element_xpath_by_script, click_element_by_script, wait_til_filled, get_whole_table, build_url
+# mine
+from util import get_just_numbers, get_value_from_key, msg
+from . import url_id
+from .AbstractCrawlerNavScrapper import AbstractCrawlerNavScrapper
+
+
+class FBrefTeamStatsScrapper(AbstractCrawlerNavScrapper):
+    base_url = "https://fbref.com/en/"
+    REGEX = "squads/.*"
+
+    def __init__(self, hide_browser: bool = True, country: str = None, tournament: str = None, season: str = None, team: str = None, ):
+        super().__init__(hide_browser)
+        self.country = country
+        self.tournament = tournament
+        self.season = season
+        self.team = team
+        self.league_url = ""
+
+    def _validate_required_fields(self) -> bool:
+        return (self.country is not None and
+                self.tournament is not None and
+                self.team is not None and
+                self.season is not None)
+
+    def _navigate(self):
+        msg(f"About to navigate page {self.driver.current_url}")
+
+        title = self.driver.title  # Access the <title> element's text content
+        msg(f"Page title: {title.strip()}")
+
+        # click on "Clubs" link
+        click_element_xpath_by_script(self.driver, "//li[@id='header_clubs']//a")
+
+        wait_til_filled(self.driver, "//table[@id='countries']")
+
+        country_list_xpath = "//table[@id='countries']//tbody//tr//th//strong//a"
+        country_list = self.driver.find_elements(By.XPATH, country_list_xpath)
+
+        msg(f"Found {len(country_list)} countries")
+        country_fc = self.country + " Football Clubs"
+        for c in country_list:
+            msg(f"country:{self.country}, ratio:{fuzz.ratio(country_fc.lower(), c.text.lower())}, <a>: {c.text}")
+            if fuzz.ratio(country_fc.lower(), c.text.lower()) > 85:
+                msg(f"Clicking {c.text}")
+                click_element_by_script(self.driver, c)
+                break
+
+        wait_til_filled(self.driver, "//table[@id='clubs']")
+
+        squad_list_xpath = "//table[@id='clubs']//tbody//tr[not(@class='thead')]"
+        squad_list = self.driver.find_elements(By.XPATH, squad_list_xpath)
+
+        msg(f"Found {len(squad_list)} squads in {country_fc}")
+        for s in squad_list:
+            row_t = s.find_element(By.XPATH, ".//td[@data-stat='comp']")  # tournament
+
+            if len(row_t.text) == 0:
+                continue
+
+            # msg(f"tournament:{self.tournament}, ratio:{fuzz.ratio(self.tournament.lower(), row_t.text.lower())}, <a>: {row_t.text}")
+            # if fuzz.ratio(self.tournament, row_t.text) > 85:
+            row_squad = s.find_element(By.XPATH, ".//th[@data-stat='team']//a")  # squad
+            msg(f"squad:{self.team}, ratio:{fuzz.ratio(self.team.lower(), row_squad.text.lower())}, <a>: {row_squad.text}") #TODO check the team name
+            if fuzz.ratio(self.team.lower(), row_squad.text.lower()) >= 80:
+                msg(f"Clicking {row_squad.text}")
+                msg(f"Clicking {row_squad.get_attribute('href')}")
+                click_element_by_script(self.driver, row_squad, wait_after=3)
+                break
+
+        wait_til_filled(self.driver, "//table[@id='comps_fa_club_league']")
+
+        seasons_list_xpath = "//table[@id='comps_fa_club_league']//tbody//tr[not(@class='thead')]"
+        seasons_list = self.driver.find_elements(By.XPATH, seasons_list_xpath)
+
+        msg(f"Found {len(seasons_list)} seasons for {self.team}")
+        for s in seasons_list:
+#            row_squad = s.find_element(By.XPATH, ".//td[@data-stat='team']")  # squad
+#            msg(f"squad ratio:{fuzz.ratio(self.team.lower(), row_squad.text.lower())}, <a>: {row_squad.text}")
+#            if fuzz.ratio(self.team.lower(), row_squad.text.lower()) >= 80:
+            squad_link = s.find_element(By.XPATH, ".//td[@data-stat='team']//a")  # squad link
+            row_season = s.find_element(By.XPATH, ".//th[@data-stat='year_id']")  # season
+            comp_season = s.find_element(By.XPATH, ".//td[@data-stat='comp_level']")  # competition
+
+            msg(f"season ratio:{fuzz.ratio(self.season.lower(), row_season.text.lower())}, <a>: {row_season.text}")
+            msg(f"squad ratio:{fuzz.ratio(self.team.lower(), squad_link.text.lower())}, <a>: {squad_link.text}")
+            msg(f"comp ratio:{fuzz.ratio(self.tournament.lower(), comp_season.text.lower())}, <a>: {comp_season.text}")
+
+            if fuzz.ratio(self.season.lower(), row_season.text.lower()) == 100 and \
+                    fuzz.ratio(self.tournament.lower(), comp_season.text.lower()) >= 80: # and \
+                    # fuzz.ratio(self.team.lower(), squad_link.text.lower()) >= 80:
+                msg(f"Clicking {squad_link.text}")
+                msg(f"Clicking {squad_link.get_attribute('href')}")
+                click_element_by_script(self.driver, squad_link, wait_after=3)
+                return
+
+        raise Exception(f"There was no match for squad:{self.team} "
+                        f"in tournament:{self.tournament} "
+                        f"in country:{self.country} "
+                        f"in season:{self.season}")
+
+    def _scrap(self) -> dict:
+
+        page_source = self.driver.page_source
+        self.soup = BeautifulSoup(page_source, "html.parser")
+
+        msg(f"Scraping url:{self.driver.current_url}")
+
+        result = {
+            "current_url": self.driver.current_url,
+            "summary": self.fetch_summary(),
+            "standard_stats": get_whole_table(self.soup.find("table", id=f"stats_standard_{url_id(self.league_url)}"), self.driver.current_url),
+            "scores_fixtures": get_whole_table(self.soup.find("table", id="matchlogs_for"), self.driver.current_url),
+            "goalkeeping": get_whole_table(self.soup.find("table", id=f"stats_keeper_{url_id(self.league_url)}"), self.driver.current_url),
+            "advance_goalkeeping": get_whole_table(self.soup.find("table", id=f"stats_keeper_adv_{url_id(self.league_url)}"), self.driver.current_url),
+            "shooting": get_whole_table(self.soup.find("table", id=f"stats_shooting_{url_id(self.league_url)}"), self.driver.current_url),
+            "passing": get_whole_table(self.soup.find("table", id=f"stats_passing_{url_id(self.league_url)}"), self.driver.current_url),
+            "possession": get_whole_table(self.soup.find("table", id=f"stats_possession_{url_id(self.league_url)}"), self.driver.current_url),
+            "playing_time": get_whole_table(self.soup.find("table", id=f"stats_playing_time_{url_id(self.league_url)}"), self.driver.current_url),
+        }
+
+        return result
+
+    def fetch_summary(self) -> dict:
+        msg(f"fetch_summary")
+
+        summary = {}
+
+        team_info_div = self.soup.find('div', {'data-template': 'Partials/Teams/Summary'})
+        season_team = team_info_div.find("h1").find_all("span")[0].text
+        summary["team"] = season_team[season_team.find(" ") + 1:season_team.find("Stats")].strip()
+        summary["season"] = "-".join(str(i) for i in get_just_numbers(season_team))
+        summary["league"] = team_info_div.find("h1").find_all("span")[1].text.replace("(", "").replace(")", "").strip()
+        self.league_url = build_url(self.driver.current_url, team_info_div.find("p").find("a")["href"])
+
+
+        for p in team_info_div.find_all("p"):
+
+            r = "".join(item.strip() + " " for item in p.text.split("\n")).strip()
+
+            if re.search("Record:", r):
+
+                if r.count("Record:") == 1:
+                    fetch_summary_record(summary, get_just_numbers(r))
+
+                elif r.count("Record:") > 1:
+                    fetch_summary_home_away_rec(summary, get_just_numbers(r))
+
+            if re.search("Goals:", r) and re.search("Goals Against:", r):
+                fetch_summary_goals(summary, get_just_numbers(r))
+
+            if re.search("xG:", r) and re.search("xGA:", r) and re.search("Diff:", r):
+                fetch_summary_xg(summary, get_just_numbers(r))
+
+            if re.search("Last Match:", r):
+                summary["last_match"] = get_value_from_key(r, "Last Match:")
+
+            if re.search("Next Match:", r):
+                summary["next_match"] = get_value_from_key(r, "Next Match:")
+
+            if re.search("Manager:", r):
+                summary["manager"] = get_value_from_key(r, "Manager:")
+
+            if re.search("Governing Country:", r):
+                country = get_value_from_key(r, "Governing Country:")
+                summary["country"] = country[:country.find(" ")+1]
+
+            if re.search("Gender:", r):
+                summary["gender"] = get_value_from_key(r, "Gender:")
+
+        return summary
+
+
+def separate_goals_from_pk(score: str) -> str:
+    if re.search("^\\d+\\s+.*$", score):
+        return score[:score.find(" ")]
+    else:
+        return score
+
+
+def fetch_summary_record(summary: dict, record: list):
+    if len(record) >= 6:
+        summary["win"] = record[0]
+        summary["draw"] = record[1]
+        summary["lose"] = record[2]
+        summary["games"] = record[0] + record[1] + record[2]
+        summary["points"] = record[3]
+        summary["pts_per_game"] = 0 if summary["points"] == 0 else record[4]
+        summary["place"] = record[4] if summary["points"] == 0 else record[5]
+        summary["tier"] = record[5] if summary["points"] == 0 else record[6]
+
+
+def fetch_summary_home_away_rec(summary: dict, home_away_rec: list):
+    if len(home_away_rec) == 8:
+        summary["record_home_w_d_l_p"] = '-'.join(str(x) for x in home_away_rec[:4])
+        summary["record_away_w_d_l_p"] = '-'.join(str(x) for x in home_away_rec[4:8])
+
+
+def fetch_summary_goals(summary: dict, goals: list):
+    if len(goals) == 5:
+        summary["goals"] = goals[0]
+        summary["goals_per_game"] = goals[1]
+        summary["goals_against"] = goals[2]
+        summary["goals_against_per_game"] = goals[3]
+        summary["goals_diff"] = goals[4]
+
+
+def fetch_summary_xg(summary: dict, xg: list):
+    if len(xg) == 3:
+        summary["xg"] = xg[0]
+        summary["xga"] = xg[1]
+        summary["xg_diff"] = xg[2]
