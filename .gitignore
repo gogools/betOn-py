@@ -1,3 +1,33 @@
-.idea
-__pycache__
-*.DS_Store
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+
+# IDE settings
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+
+# Test coverage
+htmlcov/
+*.cover
+*.py,cover
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# macOS-specific files
+**/.DS_Store
+
+# Ignore the content of the generate data
+simulator/fbref/output/**
