@@ -7,6 +7,7 @@ from crawler_scrapper.FBrefLeaguesScoresFixturesScrapper import FBrefLeaguesScor
 from util import today_date, msg, err
 from util.util_file import format_file_name, verify_if_file_exists, save_dict_2_file, delete_24h_old_files
 
+output_path = "output"
 
 def get_league_scores_fixtures_data(league: str, season: str) -> dict:
 
@@ -15,9 +16,9 @@ def get_league_scores_fixtures_data(league: str, season: str) -> dict:
     # checking if the season is the current one p.e. 2024-2025 and today is 2024
     # current season creates a folder with the current date, older seasons don't
     if today_date("%Y") in season.split("-"):
-        lsf_filename = format_file_name(f"output/{league}_stats/{league}_{season}_({today_date()}).json", True)
+        lsf_filename = format_file_name(f"{output_path}/{league}_stats/{league}_{season}_({today_date()}).json", True)
     else:
-        lsf_filename = format_file_name(f"output/{league}_stats/{league}_{season}.json", True)
+        lsf_filename = format_file_name(f"{output_path}/{league}_stats/{league}_{season}.json", True)
 
     if verify_if_file_exists(f"{lsf_filename}"):
         lsf = get_data_from_file(f"{lsf_filename}")
@@ -30,7 +31,7 @@ def get_league_scores_fixtures_data(league: str, season: str) -> dict:
         if len(lsf) == 0 or lsf == "{}":
             err("There's no Leagues Scores Fixtures data to continue, exiting...")
             try:
-                path = format_file_name(f"output/{league}_stats/{season}")
+                path = format_file_name(f"{output_path}/{league}_stats/{season}")
                 shutil.rmtree(f"{path}")
                 print(f"Folder '{path}' deleted successfully.")
             except OSError as e:
@@ -75,9 +76,9 @@ def get_teams_stats(league:str, team:str, season:str, current_season:str ) -> di
 
     delete_24h_old_files(format_file_name(f"{league}_stats/{current_season}"))
     if current_season == season:
-        ts_filename = format_file_name(f"output/{league}_stats/{season}/{team}_{league}_{season}_({today_date()}).json")
+        ts_filename = format_file_name(f"{output_path}/{league}_stats/{season}/{team}_{league}_{season}_({today_date()}).json")
     else:
-        ts_filename = format_file_name(f"output/{league}_stats/{season}/{team}_{league}_{season}.json")
+        ts_filename = format_file_name(f"{output_path}/{league}_stats/{season}/{team}_{league}_{season}.json")
 
     if verify_if_file_exists(f"{ts_filename}"):
         team_stats = get_data_from_file(f"{ts_filename}")

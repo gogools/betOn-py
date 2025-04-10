@@ -79,7 +79,7 @@ def merge_pdfs(subfolder: str, output_file: str):
             pdf_doc = fitz.open(pdf_path)
             pdf_merger.insert_pdf(pdf_doc)
 
-    pdf_merger.save(format_file_name(f"output/{output_file}_{subfolder}.pdf", True))
+    pdf_merger.save(format_file_name(f"{output_file}_{subfolder}.pdf", True))
     pdf_merger.close()
 
 

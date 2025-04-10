@@ -16,6 +16,8 @@ class SoccerMatchSimulationMixin:
     away_team = ""
     data = {}
 
+    output_temp = "output/temp"
+
 
     def __init__(self, home_team: str, away_team: str, data: dict):
         self.home_team = home_team
@@ -43,8 +45,8 @@ class SoccerMatchSimulationMixin:
 
     def pure_xg(self, subfolder: str, data_kind: str = "team_stats") -> str:
 
-        if not os.path.exists(format_file_name(f"temp/{subfolder}")):
-            os.makedirs(f"temp/{subfolder}")
+        if not os.path.exists(format_file_name(f"{self.output_temp}/{subfolder}")):
+            os.makedirs(f"{self.output_temp}/{subfolder}")
 
         home = self.get_team_stats(self.home_team, data_kind)
         h_xg = home["xg"] / home["mp"] # home_xg_per_game: season xG / matches played
@@ -65,8 +67,8 @@ class SoccerMatchSimulationMixin:
 
     def pure_xg_gk(self, subfolder: str, data_kind: str = "team_stats") -> str:
 
-        if not os.path.exists(format_file_name(f"temp/{subfolder}")):
-            os.makedirs(f"temp/{subfolder}")
+        if not os.path.exists(format_file_name(f"{self.output_temp}/{subfolder}")):
+            os.makedirs(f"{self.output_temp}/{subfolder}")
 
         home = self.get_team_stats(self.home_team, data_kind)
         h_xg_eff = home["xg"] / home["mp"] # team xG per game
@@ -93,8 +95,8 @@ class SoccerMatchSimulationMixin:
 
     def home_away_xg(self, subfolder: str, data_kind: str = "team_stats") -> str:
 
-        if not os.path.exists(format_file_name(f"temp/{subfolder}")):
-            os.makedirs(f"temp/{subfolder}")
+        if not os.path.exists(format_file_name(f"{self.output_temp}/{subfolder}")):
+            os.makedirs(f"{self.output_temp}/{subfolder}")
 
         home = self.get_team_stats(self.home_team, data_kind)
         h_xg_eff = home["xg_home"] / home["mp"]  # home team xG per game at home
@@ -190,7 +192,7 @@ class SoccerMatchSimulationMixin:
             xaxis_title="Scores",
             yaxis_title="Probability")
         if img:
-            img_name = format_file_name(f"temp/imgs/{self.home_team}_VS_{self.away_team}_{today_date()}_{method}.png")
+            img_name = format_file_name(f"{self.output_temp}/imgs/{self.home_team}_VS_{self.away_team}_{today_date()}_{method}.png")
             fig.write_image(img_name)
             return img_name
         else:
@@ -242,7 +244,7 @@ class SoccerMatchSimulationMixin:
         # Add image in the center X axis of the page but just below the table
         pdf.image(f"{image_name}", x=pew/5, w=pew*.75)
 
-        pdf_name = format_file_name(f"temp/{method}/{image_name[image_name.rfind("/") + 1: image_name.rfind(".")]}.pdf")
+        pdf_name = format_file_name(f"{self.output_temp}/{method}/{image_name[image_name.rfind("/") + 1: image_name.rfind(".")]}.pdf")
         pdf.output(pdf_name)
 
         return pdf_name
